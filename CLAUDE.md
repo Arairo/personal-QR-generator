@@ -1,0 +1,2 @@
+- Don't add Co-Authored-By lines to commits.
+- Keep the website simple: just index.html and qrcode.js, no frameworks.

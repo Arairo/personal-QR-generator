@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>QR Generator</title>
+  <style>
+    :root {
+      --bg: #f4f4f5;
+      --card: #ffffff;
+      --text: #18181b;
+      --muted: #71717a;
+      --border: #d4d4d8;
+      --accent: #18181b;
+      --accent-text: #ffffff;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #09090b;
+        --card: #18181b;
+        --text: #fafafa;
+        --muted: #a1a1aa;
+        --border: #3f3f46;
+        --accent: #fafafa;
+        --accent-text: #18181b;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      display: flex;
+      justify-content: center;
+      padding: 24px 16px;
+    }
+    main {
+      width: 100%;
+      max-width: 420px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 24px;
+    }
+    h1 { margin: 0 0 20px; font-size: 1.4rem; }
+    label { display: block; font-size: 0.9rem; color: var(--muted); margin: 14px 0 6px; }
+    input {
+      width: 100%;
+      font-size: 16px; /* stops iPhone zooming in */
+      padding: 12px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: var(--bg);
+      color: var(--text);
+    }
+    #preview {
+      margin: 24px 0 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      aspect-ratio: 1;
+      background: #fff;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      color: #71717a;
+      text-align: center;
+      padding: 12px;
+    }
+    #preview canvas { width: 100%; height: auto; image-rendering: pixelated; }
+    .buttons { display: flex; gap: 10px; margin-top: 16px; }
+    button {
+      flex: 1;
+      font-size: 1rem;
+      padding: 12px;
+      border-radius: 10px;
+      border: 1px solid var(--accent);
+      background: var(--accent);
+      color: var(--accent-text);
+      cursor: pointer;
+    }
+    button.secondary { background: transparent; color: var(--text); border-color: var(--border); }
+    button:disabled { opacity: 0.4; cursor: not-allowed; }
+    #error { color: #dc2626; font-size: 0.9rem; min-height: 1.2em; margin: 4px 0 0; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>QR Code Generator</h1>
+
+    <label for="text">URL or text</label>
+    <input id="text" type="text" placeholder="https://example.com" autocomplete="off" autofocus>
+
+    <label for="filename">File name</label>
+    <input id="filename" type="text" placeholder="qr-code" autocomplete="off">
+
+    <div id="preview">Type something above to see your QR code</div>
+    <p id="error"></p>
+
+    <div class="buttons">
+      <button id="download" disabled>Download PNG</button>
+      <button id="share" class="secondary" disabled hidden>Share</button>
+    </div>
+  </main>
+
+  <script src="qrcode.js"></script>
+  <script>
+    // Support emoji and non-English text
+    qrcode.stringToBytes = qrcode.stringToBytesFuncs['UTF-8'];
+
+    const textInput = document.getElementById('text');
+    const nameInput = document.getElementById('filename');
+    const preview = document.getElementById('preview');
+    const errorBox = document.getElementById('error');
+    const downloadBtn = document.getElementById('download');
+    const shareBtn = document.getElementById('share');
+
+    let canvas = null;
+
+    // Show the Share button only on devices that can share files (most phones)
+    const canShareFiles = !!(navigator.canShare &&
+      navigator.canShare({ files: [new File([''], 'test.png', { type: 'image/png' })] }));
+    shareBtn.hidden = !canShareFiles;
+
+    function fileName() {
+      const name = nameInput.value.trim().replace(/[\\/:*?"<>|]/g, '') || 'qr-code';
+      return name.endsWith('.png') ? name : name + '.png';
+    }
+
+    function render() {
+      const text = textInput.value.trim();
+      errorBox.textContent = '';
+      canvas = null;
+
+      if (!text) {
+        preview.textContent = 'Type something above to see your QR code';
+        downloadBtn.disabled = shareBtn.disabled = true;
+        return;
+      }
+
+      try {
+        const qr = qrcode(0, 'M'); // 0 = pick the size automatically
+        qr.addData(text);
+        qr.make();
+
+        const cells = qr.getModuleCount();
+        const margin = 4; // white border, in cells
+        const scale = Math.max(4, Math.floor(1024 / (cells + margin * 2)));
+        const size = (cells + margin * 2) * scale;
+
+        canvas = document.createElement('canvas');
+        canvas.width = canvas.height = size;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, size, size);
+        ctx.fillStyle = '#000000';
+        for (let r = 0; r < cells; r++) {
+          for (let c = 0; c < cells; c++) {
+            if (qr.isDark(r, c)) {
+              ctx.fillRect((c + margin) * scale, (r + margin) * scale, scale, scale);
+            }
+          }
+        }
+
+        preview.replaceChildren(canvas);
+        downloadBtn.disabled = shareBtn.disabled = false;
+      } catch (e) {
+        preview.textContent = '';
+        errorBox.textContent = 'That text is too long for a QR code.';
+        downloadBtn.disabled = shareBtn.disabled = true;
+      }
+    }
+
+    downloadBtn.addEventListener('click', () => {
+      if (!canvas) return;
+      const link = document.createElement('a');
+      link.download = fileName();
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+    });
+
+    shareBtn.addEventListener('click', () => {
+      if (!canvas) return;
+      canvas.toBlob(async (blob) => {
+        const file = new File([blob], fileName(), { type: 'image/png' });
+        try {
+          await navigator.share({ files: [file] });
+        } catch (e) {
+          // User closed the share sheet; nothing to do
+        }
+      }, 'image/png');
+    });
+
+    textInput.addEventListener('input', render);
+    textInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') downloadBtn.click();
+    });
+  </script>
+</body>
+</html>
